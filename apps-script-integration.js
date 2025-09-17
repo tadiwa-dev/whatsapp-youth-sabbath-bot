@@ -189,3 +189,4 @@ function testWhatsAppIntegration() {
   const result = doPost(e);
   console.log('Test result:', result.getContent());
 }
+

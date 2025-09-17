@@ -145,25 +145,35 @@ function generateTicketForRow(rowNumber, userData, ticketNumber) {
     
     slide.saveAndClose();
     
-    // Export as image for WhatsApp using Slides API
+    // Export all slides as images for WhatsApp using Slides API
     const slides = SlidesApp.openById(slide.getId());
-    const slideId = slides.getSlides()[0].getObjectId();
+    const allSlides = slides.getSlides();
     
-    // Get the image as PNG using the Slides API
-    const imageBlob = Utilities.newBlob(
-      UrlFetchApp.fetch(
-        `https://docs.google.com/presentation/d/${slide.getId()}/export/png?id=${slide.getId()}&pageid=${slideId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${ScriptApp.getOAuthToken()}`
+    // Create images for each slide and combine or send separately
+    const ticketImages = [];
+    
+    for (let i = 0; i < allSlides.length; i++) {
+      const slideId = allSlides[i].getObjectId();
+      
+      const imageBlob = Utilities.newBlob(
+        UrlFetchApp.fetch(
+          `https://docs.google.com/presentation/d/${slide.getId()}/export/png?id=${slide.getId()}&pageid=${slideId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${ScriptApp.getOAuthToken()}`
+            }
           }
-        }
-      ).getContent(),
-      'image/png',
-      `${ticketNumber}-ticket.png`
-    );
+        ).getContent(),
+        'image/png',
+        `${ticketNumber}-ticket-page${i+1}.png`
+      );
+      
+      const ticketImageFile = folder.createFile(imageBlob);
+      ticketImages.push(ticketImageFile);
+    }
     
-    const ticketImageFile = folder.createFile(imageBlob);
+    // Use the first image for the main notification (we'll send both separately)
+    const ticketImageFile = ticketImages[0];
     
     // Make the image publicly accessible temporarily
     ticketImageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -171,9 +181,21 @@ function generateTicketForRow(rowNumber, userData, ticketNumber) {
     
     console.log(`Ticket generated: ${ticketImageUrl}`);
     
-    // Send to WhatsApp bot
+    // Send to WhatsApp bot - send all ticket images
     if (whatsappNumber) {
-      notifyWhatsAppBot(whatsappNumber, ticketImageUrl, userData, ticketNumber);
+      // Send each ticket image separately
+      for (let i = 0; i < ticketImages.length; i++) {
+        const imageFile = ticketImages[i];
+        imageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        const imageUrl = `https://drive.google.com/uc?id=${imageFile.getId()}`;
+        
+        // Add a small delay between images
+        if (i > 0) {
+          Utilities.sleep(2000); // 2 second delay
+        }
+        
+        notifyWhatsAppBot(whatsappNumber, imageUrl, userData, `${ticketNumber}-Page${i+1}`);
+      }
     }
     
     // Also send email (your existing logic)

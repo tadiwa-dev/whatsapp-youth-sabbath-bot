@@ -438,7 +438,7 @@ async function processMessage(from, messageBody, message) {
             break;
 
         case STATES.COLLECTING_SCREENSHOT:
-            await handleScreenshotCollection(from, message);
+            await handleScreenshotCollection(from, messageBody);
             break;
 
         case STATES.GENERATING_TICKET:
@@ -621,12 +621,12 @@ async function handleReferenceCollection(from, message) {
 /**
  * Handle screenshot or skip option and complete registration
  */
-async function handleScreenshotCollection(from, message) {
+async function handleScreenshotCollection(from, messageBody) {
     const userState = getUserState(from);
     
-    if (message && typeof message === 'object' && message.image) {
+    if (messageBody === 'image_received') {
         userState.data.paymentScreenshot = 'Image received';
-    } else if (typeof message === 'string' && message.toLowerCase().includes('skip')) {
+    } else if (messageBody && messageBody.toLowerCase().includes('skip')) {
         userState.data.paymentScreenshot = 'Skipped - will verify via reference';
     } else {
         await sendMessage(from, "Please send a screenshot of your payment or type 'SKIP' to proceed without it.");
@@ -755,7 +755,7 @@ app.post('/webhook', async (req, res) => {
                 let messageBody = '';
                 if (message.text?.body) {
                     messageBody = message.text.body;
-                } else if (message.interactive?.button_reply?.title) {
+                } else if (message.interactive?.button_reply?.id) {
                     messageBody = message.interactive.button_reply.id;
                 } else if (message.image) {
                     messageBody = 'image_received';
