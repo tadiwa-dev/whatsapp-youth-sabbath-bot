@@ -539,11 +539,8 @@ async function handleInitialMessage(from, message) {
 async function handlePaymentCheck(from, message) {
     console.log(`Payment check - received message: "${message}"`);
     
-    if (message === 'paid_yes' || message.includes('yes') || message.includes('paid')) {
-        console.log('User confirmed payment - proceeding to registration');
-        await sendMessage(from, "Great! Let's proceed with your registration.\n\n📝 Please provide your *Full Name*:");
-        setUserState(from, { state: STATES.COLLECTING_NAME, data: {} });
-    } else if (message === 'paid_no' || message.includes('no') || message.includes('not') || message.toLowerCase().includes('yet')) {
+    // Check for "no" responses FIRST (before "paid" check)
+    if (message === 'paid_no' || message.includes('no') || message.includes('not') || message.toLowerCase().includes('yet')) {
         console.log('User has not paid - sending payment instructions');
         await sendMessage(from, 
             "💰 Please make the $2 payment first using EcoCash.\n\n" +
@@ -552,6 +549,10 @@ async function handlePaymentCheck(from, message) {
             "After payment, reply with 'PAID' to continue with registration."
         );
         setUserState(from, { state: STATES.AWAITING_PAYMENT, data: {} });
+    } else if (message === 'paid_yes' || message.includes('yes') || message.toLowerCase().includes('paid')) {
+        console.log('User confirmed payment - proceeding to registration');
+        await sendMessage(from, "Great! Let's proceed with your registration.\n\n📝 Please provide your *Full Name*:");
+        setUserState(from, { state: STATES.COLLECTING_NAME, data: {} });
     } else {
         console.log(`Unknown payment response: "${message}"`);
         await sendMessage(from, `Debug: Received "${message}". Please reply with 'Yes' if you have paid or 'No' if you haven't paid yet.`);
