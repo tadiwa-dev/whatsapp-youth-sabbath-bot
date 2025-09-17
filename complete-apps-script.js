@@ -145,9 +145,25 @@ function generateTicketForRow(rowNumber, userData, ticketNumber) {
     
     slide.saveAndClose();
     
-    // Export as PNG for WhatsApp (better than PDF for WhatsApp)
-    const ticketBlob = DriveApp.getFileById(slide.getId()).getAs("image/png");
-    const ticketImageFile = folder.createFile(ticketBlob.setName(`${ticketNumber}-ticket.png`));
+    // Export as image for WhatsApp using Slides API
+    const slides = SlidesApp.openById(slide.getId());
+    const slideId = slides.getSlides()[0].getObjectId();
+    
+    // Get the image as PNG using the Slides API
+    const imageBlob = Utilities.newBlob(
+      UrlFetchApp.fetch(
+        `https://docs.google.com/presentation/d/${slide.getId()}/export/png?id=${slide.getId()}&pageid=${slideId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${ScriptApp.getOAuthToken()}`
+          }
+        }
+      ).getContent(),
+      'image/png',
+      `${ticketNumber}-ticket.png`
+    );
+    
+    const ticketImageFile = folder.createFile(imageBlob);
     
     // Make the image publicly accessible temporarily
     ticketImageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -288,8 +304,24 @@ function generateAndEmailTickets() {
 
       // If this was a WhatsApp registration, also send to WhatsApp
       if (whatsappNumber && whatsappNumber.toString().startsWith('263')) {
-        const ticketBlob = DriveApp.getFileById(slide.getId()).getAs("image/png");
-        const ticketImageFile = folder.createFile(ticketBlob.setName(`${ticketNumber}-whatsapp.png`));
+        // Export as image for WhatsApp using Slides API
+        const slides = SlidesApp.openById(slide.getId());
+        const slideId = slides.getSlides()[0].getObjectId();
+        
+        const imageBlob = Utilities.newBlob(
+          UrlFetchApp.fetch(
+            `https://docs.google.com/presentation/d/${slide.getId()}/export/png?id=${slide.getId()}&pageid=${slideId}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${ScriptApp.getOAuthToken()}`
+              }
+            }
+          ).getContent(),
+          'image/png',
+          `${ticketNumber}-whatsapp.png`
+        );
+        
+        const ticketImageFile = folder.createFile(imageBlob);
         
         ticketImageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         const ticketImageUrl = `https://drive.google.com/uc?id=${ticketImageFile.getId()}`;
