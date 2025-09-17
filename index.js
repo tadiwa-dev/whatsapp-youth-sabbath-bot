@@ -662,7 +662,8 @@ async function handleScreenshotCollection(from, message) {
         });
 
         // Start polling for the generated ticket (backup method)
-        pollForTicketAndSend(from, userState.data);
+        // Disabled due to Google API auth issues - relying on Apps Script direct notification
+        // pollForTicketAndSend(from, userState.data);
 
     } else {
         await sendMessage(from, 
