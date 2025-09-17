@@ -495,10 +495,12 @@ async function handleInitialMessage(from, message) {
  * Handle payment verification
  */
 async function handlePaymentCheck(from, message) {
+    console.log(`Payment check - received message: "${message}"`);
+    
     if (message.includes('yes') || message.includes('paid') || message === 'paid_yes') {
         await sendMessage(from, "Great! Let's proceed with your registration.\n\n📝 Please provide your *Full Name*:");
         setUserState(from, { state: STATES.COLLECTING_NAME, data: {} });
-    } else if (message.includes('no') || message.includes('not') || message === 'paid_no') {
+    } else if (message.includes('no') || message.includes('not') || message === 'paid_no' || message.toLowerCase().includes('yet')) {
         await sendMessage(from, 
             "💰 Please make the $2 payment first using EcoCash.\n\n" +
             "📱 Dial this USSD code on your phone:\n" +
@@ -507,7 +509,7 @@ async function handlePaymentCheck(from, message) {
         );
         setUserState(from, { state: STATES.AWAITING_PAYMENT, data: {} });
     } else {
-        await sendMessage(from, "Please reply with 'Yes' if you have paid or 'No' if you haven't paid yet.");
+        await sendMessage(from, `Debug: Received "${message}". Please reply with 'Yes' if you have paid or 'No' if you haven't paid yet.`);
     }
 }
 
