@@ -257,6 +257,87 @@ async function sendToAppsScript(userData) {
 // Note: triggerTicketGeneration function removed - now handled directly by sendToAppsScript
 
 /**
+ * Download WhatsApp image and upload to Google Drive
+ * @param {string} mediaId - WhatsApp media ID
+ * @param {string} userPhone - User's phone number for filename
+ * @param {string} mimeType - Image mime type
+ */
+async function downloadAndStoreWhatsAppImage(mediaId, userPhone, mimeType = 'image/jpeg') {
+    if (!mediaId || !WHATSAPP_TOKEN) {
+        console.error('Missing media ID or WhatsApp token');
+        return null;
+    }
+
+    try {
+        // Step 1: Get media URL from WhatsApp
+        const mediaInfoResponse = await axios.get(
+            `https://graph.facebook.com/v18.0/${mediaId}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${WHATSAPP_TOKEN}`
+                }
+            }
+        );
+
+        const mediaUrl = mediaInfoResponse.data.url;
+        console.log('Media URL retrieved:', mediaUrl);
+
+        // Step 2: Download the image
+        const imageResponse = await axios.get(mediaUrl, {
+            headers: {
+                'Authorization': `Bearer ${WHATSAPP_TOKEN}`
+            },
+            responseType: 'arraybuffer'
+        });
+
+        const imageBuffer = Buffer.from(imageResponse.data);
+        console.log('Image downloaded, size:', imageBuffer.length);
+
+        // Step 3: Upload to Google Drive (if configured)
+        if (drive && GOOGLE_DRIVE_FOLDER_ID) {
+            const fileName = `payment-screenshot-${userPhone}-${Date.now()}.jpg`;
+            
+            // Create file metadata
+            const fileMetadata = {
+                name: fileName,
+                parents: [GOOGLE_DRIVE_FOLDER_ID]
+            };
+
+            // Upload file
+            const media = {
+                mimeType: mimeType,
+                body: require('stream').Readable.from(imageBuffer)
+            };
+
+            const driveResponse = await drive.files.create({
+                resource: fileMetadata,
+                media: media,
+                fields: 'id,name,webViewLink'
+            });
+
+            console.log('Image uploaded to Google Drive:', driveResponse.data);
+            return {
+                driveFileId: driveResponse.data.id,
+                fileName: fileName,
+                webViewLink: driveResponse.data.webViewLink,
+                mediaId: mediaId
+            };
+        } else {
+            console.log('Google Drive not configured, storing media ID only');
+            return {
+                mediaId: mediaId,
+                fileName: `payment-screenshot-${userPhone}-${Date.now()}.jpg`,
+                note: 'Image available via WhatsApp Media API'
+            };
+        }
+
+    } catch (error) {
+        console.error('Error downloading/storing WhatsApp image:', error.response?.data || error.message);
+        return null;
+    }
+}
+
+/**
  * Find and download the generated ticket image from Google Drive
  * @param {string} userEmail - User's email to find the ticket
  * @param {string} userName - User's name to find the ticket
@@ -438,7 +519,7 @@ async function processMessage(from, messageBody, message) {
             break;
 
         case STATES.COLLECTING_SCREENSHOT:
-            await handleScreenshotCollection(from, messageBody);
+            await handleScreenshotCollection(from, messageBody, message);
             break;
 
         case STATES.GENERATING_TICKET:
@@ -669,11 +750,26 @@ async function handleReferenceCollection(from, message) {
 /**
  * Handle screenshot or skip option and complete registration
  */
-async function handleScreenshotCollection(from, messageBody) {
+async function handleScreenshotCollection(from, messageBody, message) {
     const userState = getUserState(from);
     
-    if (messageBody === 'image_received') {
-        userState.data.paymentScreenshot = 'Image received';
+    if (messageBody === 'image_received' && message?.imageData) {
+        // Download and store the image
+        const imageInfo = await downloadAndStoreWhatsAppImage(
+            message.imageData.id, 
+            from, 
+            message.imageData.mime_type
+        );
+        
+        if (imageInfo) {
+            userState.data.paymentScreenshot = imageInfo.driveFileId ? 
+                `Stored in Google Drive: ${imageInfo.fileName}` : 
+                `WhatsApp Media ID: ${imageInfo.mediaId}`;
+            userState.data.screenshotInfo = imageInfo;
+            console.log('Screenshot stored:', imageInfo);
+        } else {
+            userState.data.paymentScreenshot = 'Image received but storage failed';
+        }
     } else if (messageBody && messageBody.toLowerCase().includes('skip')) {
         userState.data.paymentScreenshot = 'Skipped - will verify via reference';
     } else {
@@ -807,6 +903,12 @@ app.post('/webhook', async (req, res) => {
                     messageBody = message.interactive.button_reply.id;
                 } else if (message.image) {
                     messageBody = 'image_received';
+                    // Store image information for later processing
+                    message.imageData = {
+                        id: message.image.id,
+                        mime_type: message.image.mime_type,
+                        sha256: message.image.sha256
+                    };
                 }
 
                 console.log(`Message from ${from}: ${messageBody}`);
