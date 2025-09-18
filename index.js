@@ -294,13 +294,53 @@ async function downloadAndStoreWhatsAppImage(mediaId, userPhone, mimeType = 'ima
         console.log('Image downloaded, size:', imageBuffer.length);
 
         // Step 3: Upload to Google Drive (if configured)
-        if (drive && GOOGLE_DRIVE_FOLDER_ID) {
+        if (drive) {
             const fileName = `payment-screenshot-${userPhone}-${Date.now()}.jpg`;
+            
+            // Use the same "Generated Tickets" folder as the Apps Script
+            let folderId;
+            if (GOOGLE_DRIVE_FOLDER_ID) {
+                // Use configured folder ID if available
+                folderId = GOOGLE_DRIVE_FOLDER_ID;
+            } else {
+                // Find or create "Generated Tickets" folder
+                try {
+                    const folderQuery = "name='Generated Tickets' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+                    const folders = await drive.files.list({
+                        q: folderQuery,
+                        fields: 'files(id,name)'
+                    });
+                    
+                    if (folders.data.files.length > 0) {
+                        folderId = folders.data.files[0].id;
+                        console.log('Found existing Generated Tickets folder:', folderId);
+                    } else {
+                        // Create the folder if it doesn't exist
+                        const folderMetadata = {
+                            name: 'Generated Tickets',
+                            mimeType: 'application/vnd.google-apps.folder'
+                        };
+                        const folder = await drive.files.create({
+                            resource: folderMetadata,
+                            fields: 'id,name'
+                        });
+                        folderId = folder.data.id;
+                        console.log('Created Generated Tickets folder:', folderId);
+                    }
+                } catch (error) {
+                    console.error('Error finding/creating Generated Tickets folder:', error);
+                    return {
+                        mediaId: mediaId,
+                        fileName: fileName,
+                        note: 'Image available via WhatsApp Media API (folder creation failed)'
+                    };
+                }
+            }
             
             // Create file metadata
             const fileMetadata = {
                 name: fileName,
-                parents: [GOOGLE_DRIVE_FOLDER_ID]
+                parents: [folderId]
             };
 
             // Upload file
@@ -315,12 +355,13 @@ async function downloadAndStoreWhatsAppImage(mediaId, userPhone, mimeType = 'ima
                 fields: 'id,name,webViewLink'
             });
 
-            console.log('Image uploaded to Google Drive:', driveResponse.data);
+            console.log('Image uploaded to Generated Tickets folder:', driveResponse.data);
             return {
                 driveFileId: driveResponse.data.id,
                 fileName: fileName,
                 webViewLink: driveResponse.data.webViewLink,
-                mediaId: mediaId
+                mediaId: mediaId,
+                folderName: 'Generated Tickets'
             };
         } else {
             console.log('Google Drive not configured, storing media ID only');
@@ -763,10 +804,10 @@ async function handleScreenshotCollection(from, messageBody, message) {
         
         if (imageInfo) {
             userState.data.paymentScreenshot = imageInfo.driveFileId ? 
-                `Stored in Google Drive: ${imageInfo.fileName}` : 
+                `Stored in Generated Tickets folder: ${imageInfo.fileName}` : 
                 `WhatsApp Media ID: ${imageInfo.mediaId}`;
             userState.data.screenshotInfo = imageInfo;
-            console.log('Screenshot stored:', imageInfo);
+            console.log('Screenshot stored in Generated Tickets folder:', imageInfo);
         } else {
             userState.data.paymentScreenshot = 'Image received but storage failed';
         }
